@@ -7,16 +7,20 @@ COPY package.json yarn.lock ./
 COPY .yarn ./.yarn
 COPY .yarnrc.yml ./
 
+# Copiar apenas os package.json necessários
 COPY packages/backend/package.json packages/backend/
 COPY packages/app/package.json packages/app/
-COPY packages/catalog/package.json packages/catalog/ 2>/dev/null || true
 
-# Esse comando encontra todos os diretórios com package.json e cria os diretórios correspondentes
+# Criar estrutura de diretórios para pacotes usando comandos compatíveis com Docker
+RUN mkdir -p packages/catalog || true
+COPY packages/catalog/package.json packages/catalog/ 2>/dev/null || echo "Catalog package not found"
+
+# Criar diretórios para todos os pacotes encontrados
 RUN find packages plugins -type f -name 'package.json' -not -path "*/node_modules/*" -not -path "*/dist/*" | \
     xargs -I{} dirname {} | \
     xargs -I{} mkdir -p {}
 
-# Instala as dependências usando Yarn diretamente (sem corepack)
+# Instalar dependências
 RUN yarn install --network-timeout 600000
 
 # Stage 2 - Build packages
@@ -33,8 +37,8 @@ RUN apt-get update && \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Configurar variáveis de ambiente
-ENV NODE_ENV development
+# Configurar variáveis de ambiente (corrigindo o formato)
+ENV NODE_ENV=development
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
 
@@ -67,20 +71,20 @@ RUN groupadd -r backstage && \
     chown -R backstage:backstage /app
 
 # Copiar apenas os arquivos necessários
-COPY --from=build --chown=backstage:backstage /app/packages/backend/dist/package.json .
-COPY --from=build --chown=backstage:backstage /app/packages/backend/dist/yarn.lock .
-COPY --from=build --chown=backstage:backstage /app/packages/backend/dist .
-COPY --from=build --chown=backstage:backstage /app/app-config*.yaml .
+COPY --from=build /app/packages/backend/dist/package.json .
+COPY --from=build /app/yarn.lock .
+COPY --from=build /app/packages/backend/dist/* .
+COPY --from=build /app/app-config*.yaml .
 
 # Mudar para usuário non-root
 USER backstage
 
-# Configurar ambiente
-ENV NODE_ENV production
+# Configurar ambiente (corrigindo o formato)
+ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 # Expor porta padrão do Backstage
 EXPOSE 7007
 
 # Comando para iniciar o backend
-CMD ["node", "packages/backend", "--config", "app-config.yaml", "--config", "app-config.production.yaml"]
+CMD ["node", "packages/backend", "--config", "app-config.yaml"]
