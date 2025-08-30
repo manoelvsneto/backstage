@@ -1,5 +1,5 @@
 # Stage 1 - Build
-FROM node:18-bookworm-slim AS build
+FROM node:18-bookworm AS build
 
 WORKDIR /app
 
@@ -14,22 +14,23 @@ RUN apt-get update && \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar todo o código-fonte primeiro
-# Isso garante que todos os workspaces estejam disponíveis durante a instalação
-COPY . .
+# Confirmar que estamos usando Yarn 1.x
+RUN yarn --version
 
-# Configurar ambiente para evitar problemas
+# Definir variáveis de ambiente para evitar downloads desnecessários
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Remover o diretório node_modules se existir e usar npm para instalar
-RUN rm -rf node_modules && \
-    npm ci
+# Copiar todo o projeto (importante para monorepo com workspaces)
+COPY . .
+
+# Instalar dependências usando Yarn 1.x
+RUN yarn install
 
 # Build dos pacotes
-RUN npm run tsc && \
-    npm run build
+RUN yarn tsc
+RUN yarn build
 
 # Stage 2 - Imagem de produção
 FROM node:18-bookworm-slim
@@ -47,8 +48,10 @@ RUN apt-get update && \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar configurações do npm
-COPY package.json package-lock.json* ./
+# Copiar arquivos de configuração do yarn
+COPY package.json yarn.lock ./
+COPY .yarn ./.yarn
+COPY .yarnrc.yml ./
 
 # Copiar app-config
 COPY --from=build /app/app-config*.yaml ./
