@@ -7,13 +7,15 @@ COPY package.json yarn.lock ./
 COPY .yarn ./.yarn
 COPY .yarnrc.yml ./
 
-# Copiar apenas os package.json necessários
+# Copiar apenas os package.json necessários e garantir que os diretórios existam
+RUN mkdir -p packages/backend packages/app packages/catalog
+
 COPY packages/backend/package.json packages/backend/
 COPY packages/app/package.json packages/app/
 
-# Criar estrutura de diretórios para pacotes usando comandos compatíveis com Docker
-RUN mkdir -p packages/catalog || true
-COPY packages/catalog/package.json packages/catalog/ 2>/dev/null || echo "Catalog package not found"
+# Tentar copiar o package.json do catalog apenas se ele existir
+# Para isso, usamos um script shell como intermediário
+RUN if [ -f packages/catalog/package.json ]; then cp packages/catalog/package.json packages/catalog/; fi
 
 # Criar diretórios para todos os pacotes encontrados
 RUN find packages plugins -type f -name 'package.json' -not -path "*/node_modules/*" -not -path "*/dist/*" | \
@@ -37,7 +39,7 @@ RUN apt-get update && \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Configurar variáveis de ambiente (corrigindo o formato)
+# Configurar variáveis de ambiente
 ENV NODE_ENV=development
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
@@ -73,13 +75,13 @@ RUN groupadd -r backstage && \
 # Copiar apenas os arquivos necessários
 COPY --from=build /app/packages/backend/dist/package.json .
 COPY --from=build /app/yarn.lock .
-COPY --from=build /app/packages/backend/dist/* .
-COPY --from=build /app/app-config*.yaml .
+COPY --from=build /app/packages/backend/dist/ ./
+COPY --from=build /app/app-config*.yaml ./
 
 # Mudar para usuário non-root
 USER backstage
 
-# Configurar ambiente (corrigindo o formato)
+# Configurar ambiente
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
