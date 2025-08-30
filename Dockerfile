@@ -25,8 +25,8 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Instalar dependências com mais flags de debug
-RUN yarn install --frozen-lockfile --network-timeout 600000 --verbose
+# Instalar dependências com flags compatíveis com Yarn v2+
+RUN yarn install --immutable
 
 # Copiar código-fonte depois que as dependências foram instaladas
 COPY . .
@@ -68,8 +68,8 @@ COPY --from=build /app/plugins plugins
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Instalar dependências de produção
-RUN yarn install --frozen-lockfile --production --network-timeout 600000
+# Instalar dependências de produção (usando --immutable e --mode prod)
+RUN yarn install --immutable --mode prod
 
 # Expor porta padrão do Backstage
 EXPOSE 7007
