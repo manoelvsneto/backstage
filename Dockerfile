@@ -1,5 +1,5 @@
 # Baseado na abordagem recomendada para Backstage com Yarn Berry
-FROM node:18 AS build
+FROM node:18-bookworm-slim AS build
 
 WORKDIR /app
 
@@ -18,34 +18,28 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Estratégia para garantir que o build do Backstage funcione com o Yarn Berry
-COPY package.json yarn.lock ./
-COPY .yarn ./.yarn
-COPY .yarnrc.yml ./
+# Copiar todo o código-fonte de uma vez
+COPY . .
 
-# Usar a versão do Yarn Berry do projeto
-RUN corepack enable && \
-    yarn --version
+# Habilitar corepack para usar a versão do Yarn no projeto
+RUN corepack enable
 
-# Copiar apenas arquivos necessários para o build inicialmente
-COPY packages packages
-COPY plugins plugins
-COPY app-config*.yaml ./
-COPY tsconfig*.json ./
+# Verificar a versão do Yarn
+RUN yarn --version
 
-# Instalar dependências de forma robusta com o Yarn Berry
+# Instalar dependências
 RUN yarn install
 
-# Agora fazer o build
-RUN yarn tsc && \
-    yarn build:backend --config app-config.yaml
+# Build
+RUN yarn tsc
+RUN yarn build
 
-# Stage de produção
-FROM node:18
+# Stage 2 - Imagem de produção
+FROM node:18-bookworm-slim
 
 WORKDIR /app
 
-# Instalar dependências do sistema necessárias para produção
+# Instalar dependências do sistema necessárias
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3 \
@@ -53,20 +47,29 @@ RUN apt-get update && \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar apenas os arquivos necessários para produção
-COPY --from=build /app/packages/backend/dist/bundle.tar.gz .
+# Copiar arquivos de configuração
+COPY --from=build /app/package.json /app/yarn.lock ./
+COPY --from=build /app/.yarn ./.yarn
+COPY --from=build /app/.yarnrc.yml ./
+COPY --from=build /app/app-config*.yaml ./
 
-RUN tar xzf bundle.tar.gz && \
-    rm bundle.tar.gz
+# Habilitar corepack para usar a versão do Yarn no projeto
+RUN corepack enable
 
-# Configurações de ambiente para produção
+# Copiar pacotes compilados
+COPY --from=build /app/packages /app/packages
+COPY --from=build /app/node_modules /app/node_modules
+
+# Se existir, copiar plugins compilados
+RUN mkdir -p /app/plugins
+COPY --from=build /app/plugins /app/plugins 2>/dev/null || true
+
+# Configurar ambiente
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 # Expor porta padrão do Backstage
 EXPOSE 7007
 
-# Comando para iniciar o backend
-CMD ["node", "packages/backend"]
 # Comando para iniciar o backend
 CMD ["node", "packages/backend/dist/index.js"]
