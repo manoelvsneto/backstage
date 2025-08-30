@@ -1,60 +1,42 @@
-# Stage 1 - Create yarn install skeleton layer
-FROM node:18-bookworm-slim AS packages
-
-WORKDIR /app
-
-COPY package.json yarn.lock ./
-COPY .yarn ./.yarn
-COPY .yarnrc.yml ./
-
-# Copiar apenas os package.json necessários e garantir que os diretórios existam
-RUN mkdir -p packages/backend packages/app packages/catalog
-
-COPY packages/backend/package.json packages/backend/
-COPY packages/app/package.json packages/app/
-
-# Tentar copiar o package.json do catalog apenas se ele existir
-# Para isso, usamos um script shell como intermediário
-RUN if [ -f packages/catalog/package.json ]; then cp packages/catalog/package.json packages/catalog/; fi
-
-# Criar diretórios para todos os pacotes encontrados
-RUN find packages plugins -type f -name 'package.json' -not -path "*/node_modules/*" -not -path "*/dist/*" | \
-    xargs -I{} dirname {} | \
-    xargs -I{} mkdir -p {}
-
-# Instalar dependências
-RUN yarn install --network-timeout 600000
-
-# Stage 2 - Build packages
+# Stage 1 - Build
 FROM node:18-bookworm-slim AS build
 
 WORKDIR /app
 
-# Instalar dependências do sistema
+# Instalar dependências do sistema necessárias
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3 \
     build-essential \
     libsqlite3-dev \
     git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Instalar Yarn Classic (1.x) explicitamente
+RUN npm install -g yarn@1.22.19 && \
+    yarn --version
+
 # Configurar variáveis de ambiente
-ENV NODE_ENV=development
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Copiar tudo do estágio anterior
-COPY --from=packages /app .
-
-# Copiar o código-fonte
+# Copiar todo o código-fonte de uma vez
 COPY . .
 
-# Build do backend
-RUN yarn tsc
-RUN yarn build:backend
+# Ignorar o Yarn Berry e usar o Yarn Classic
+RUN rm -rf .yarn .yarnrc.yml
+RUN echo '{"nodeLinker": "node-modules"}' > .yarnrc.json
 
-# Stage 3 - Imagem de produção
+# Instalar dependências com Yarn Classic
+RUN yarn install --network-timeout 600000
+
+# Build
+RUN yarn tsc
+RUN yarn build
+
+# Stage 2 - Imagem de produção
 FROM node:18-bookworm-slim
 
 WORKDIR /app
@@ -72,11 +54,17 @@ RUN groupadd -r backstage && \
     useradd -r -g backstage -d /app backstage && \
     chown -R backstage:backstage /app
 
-# Copiar apenas os arquivos necessários
-COPY --from=build /app/packages/backend/dist/package.json .
-COPY --from=build /app/yarn.lock .
-COPY --from=build /app/packages/backend/dist/ ./
-COPY --from=build /app/app-config*.yaml ./
+# Copiar o package.json e yarn.lock
+COPY --from=build --chown=backstage:backstage /app/package.json ./
+COPY --from=build --chown=backstage:backstage /app/yarn.lock ./
+
+# Copiar app-config
+COPY --from=build --chown=backstage:backstage /app/app-config*.yaml ./
+
+# Copiar o código compilado
+COPY --from=build --chown=backstage:backstage /app/packages ./packages
+COPY --from=build --chown=backstage:backstage /app/plugins ./plugins
+COPY --from=build --chown=backstage:backstage /app/node_modules ./node_modules
 
 # Mudar para usuário non-root
 USER backstage
@@ -89,4 +77,4 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 EXPOSE 7007
 
 # Comando para iniciar o backend
-CMD ["node", "packages/backend", "--config", "app-config.yaml"]
+CMD ["node", "packages/backend/dist/index.js"]
