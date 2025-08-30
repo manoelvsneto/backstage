@@ -3,7 +3,7 @@ FROM node:18-bookworm-slim AS build
 
 WORKDIR /app
 
-# Instalar dependências do sistema necessárias ANTES do yarn install
+# Instalar dependências do sistema necessárias
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     libsqlite3-dev \
@@ -12,28 +12,24 @@ RUN apt-get update && \
     git \
     ca-certificates \
     procps \
-    && rm -rf /var/lib/apt/lists/* \
-    && yarn config set python /usr/bin/python3
+    && rm -rf /var/lib/apt/lists/*
 
-# Melhorar o cache do Docker copiando apenas os arquivos de configuração do yarn primeiro
-COPY package.json yarn.lock ./
-COPY .yarn ./.yarn
-COPY .yarnrc.yml ./
+# Copiar todo o código-fonte primeiro
+# Isso garante que todos os workspaces estejam disponíveis durante a instalação
+COPY . .
 
-# Configurar ambiente para evitar problemas com o Yarn
+# Configurar ambiente para evitar problemas
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Instalar dependências com flags compatíveis com Yarn v2+
-RUN yarn install --immutable
-
-# Copiar código-fonte depois que as dependências foram instaladas
-COPY . .
+# Remover o diretório node_modules se existir e usar npm para instalar
+RUN rm -rf node_modules && \
+    npm ci
 
 # Build dos pacotes
-RUN yarn tsc
-RUN yarn build
+RUN npm run tsc && \
+    npm run build
 
 # Stage 2 - Imagem de produção
 FROM node:18-bookworm-slim
@@ -49,13 +45,10 @@ RUN apt-get update && \
     git \
     ca-certificates \
     procps \
-    && rm -rf /var/lib/apt/lists/* \
-    && yarn config set python /usr/bin/python3
+    && rm -rf /var/lib/apt/lists/*
 
-# Copiar configurações do yarn
-COPY --from=build /app/package.json /app/yarn.lock ./
-COPY --from=build /app/.yarn ./.yarn
-COPY --from=build /app/.yarnrc.yml ./
+# Copiar configurações do npm
+COPY package.json package-lock.json* ./
 
 # Copiar app-config
 COPY --from=build /app/app-config*.yaml ./
@@ -63,13 +56,11 @@ COPY --from=build /app/app-config*.yaml ./
 # Copiar pacotes compilados
 COPY --from=build /app/packages packages
 COPY --from=build /app/plugins plugins
+COPY --from=build /app/node_modules node_modules
 
 # Configurar ambiente
 ENV NODE_ENV=production
 ENV NODE_OPTIONS="--max-old-space-size=4096"
-
-# Instalar dependências de produção (usando --immutable e --mode prod)
-RUN yarn install --immutable --mode prod
 
 # Expor porta padrão do Backstage
 EXPOSE 7007
