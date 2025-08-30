@@ -3,15 +3,32 @@ FROM node:18-bookworm-slim AS build
 
 WORKDIR /app
 
-# Copiar arquivos de configuração do yarn
+# Instalar dependências do sistema necessárias ANTES do yarn install
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libsqlite3-dev \
+    python3 \
+    build-essential \
+    git \
+    ca-certificates \
+    procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && yarn config set python /usr/bin/python3
+
+# Melhorar o cache do Docker copiando apenas os arquivos de configuração do yarn primeiro
 COPY package.json yarn.lock ./
 COPY .yarn ./.yarn
 COPY .yarnrc.yml ./
 
-# Instalar dependências
-RUN yarn install --frozen-lockfile
+# Configurar ambiente para evitar problemas com o Yarn
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=true
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Copiar código-fonte
+# Instalar dependências com mais flags de debug
+RUN yarn install --frozen-lockfile --network-timeout 600000 --verbose
+
+# Copiar código-fonte depois que as dependências foram instaladas
 COPY . .
 
 # Build dos pacotes
@@ -25,9 +42,15 @@ WORKDIR /app
 
 # Instalar dependências do sistema necessárias
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libsqlite3-dev python3 build-essential git && \
-    rm -rf /var/lib/apt/lists/* && \
-    yarn config set python /usr/bin/python3
+    apt-get install -y --no-install-recommends \
+    libsqlite3-dev \
+    python3 \
+    build-essential \
+    git \
+    ca-certificates \
+    procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && yarn config set python /usr/bin/python3
 
 # Copiar configurações do yarn
 COPY --from=build /app/package.json /app/yarn.lock ./
@@ -41,11 +64,12 @@ COPY --from=build /app/app-config*.yaml ./
 COPY --from=build /app/packages packages
 COPY --from=build /app/plugins plugins
 
-# Instalar dependências de produção
-RUN yarn install --frozen-lockfile --production
-
-# Configurar variáveis de ambiente
+# Configurar ambiente
 ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+# Instalar dependências de produção
+RUN yarn install --frozen-lockfile --production --network-timeout 600000
 
 # Expor porta padrão do Backstage
 EXPOSE 7007

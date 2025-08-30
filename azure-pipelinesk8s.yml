@@ -16,12 +16,14 @@ stages:
     displayName: Build
     steps:
     - task: Docker@2
+      displayName: Build and push Docker image
       inputs:
         containerRegistry: 'DockerConnection'
         repository: 'manoelvsneto/backstage'
         command: 'buildAndPush'
         tags: '$(Build.BuildId)'
         Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+        arguments: '--no-cache --platform=linux/arm64'
     
     - task: KubernetesManifest@0
       displayName: Create imagePullSecret
