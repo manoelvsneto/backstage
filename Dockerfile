@@ -13,9 +13,8 @@ RUN apt-get update && \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar Yarn Classic (1.x) explicitamente
-RUN npm install -g yarn@1.22.19 && \
-    yarn --version
+# Verificar a versão do Yarn e usar a existente
+RUN yarn --version
 
 # Configurar variáveis de ambiente
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
@@ -25,11 +24,11 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 # Copiar todo o código-fonte de uma vez
 COPY . .
 
-# Ignorar o Yarn Berry e usar o Yarn Classic
+# Remover configurações do Yarn Berry e configurar para usar node_modules
 RUN rm -rf .yarn .yarnrc.yml
 RUN echo '{"nodeLinker": "node-modules"}' > .yarnrc.json
 
-# Instalar dependências com Yarn Classic
+# Instalar dependências
 RUN yarn install --network-timeout 600000
 
 # Build
