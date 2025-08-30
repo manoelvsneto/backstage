@@ -1,0 +1,54 @@
+pool:
+  name: Arm64
+  vmImage: 'ubuntu-22.04'
+
+trigger:
+- main
+resources:
+- repo: self
+variables:
+  imagePullSecret: 'regcred'
+stages:
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: Build
+    displayName: Build
+    steps:
+    - task: Docker@2
+      inputs:
+        containerRegistry: 'DockerConnection'
+        repository: 'manoelvsneto/backstage'
+        command: 'buildAndPush'
+        tags: '$(Build.BuildId)'
+        Dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
+    
+    - task: KubernetesManifest@0
+      displayName: Create imagePullSecret
+      inputs:
+        kubernetesServiceConnection: K8SOracleCloud
+        action: createSecret
+        secretName: $(imagePullSecret)
+        dockerRegistryEndpoint: 'DockerConnection'
+    
+    - task: PublishPipelineArtifact@1
+      displayName: Publish Report
+      inputs:
+        artifact: '_backend'
+        publishLocation: 'pipeline'
+    
+    - task: KubernetesManifest@0
+      displayName: Deploy to Kubernetes cluster
+      inputs:
+        kubernetesServiceConnection: K8SOracleCloud
+        action: deploy
+        manifests: |
+          $(Build.SourcesDirectory)/k8s/namespace.yaml
+          $(Build.SourcesDirectory)/k8s/configmap.yaml
+          $(Build.SourcesDirectory)/k8s/backstage.yaml
+          $(Build.SourcesDirectory)/k8s/secrets.yaml
+          $(Build.SourcesDirectory)/k8s/ingress.yaml
+          $(Build.SourcesDirectory)/k8s/postgresql.yaml
+        imagePullSecrets: |
+          $(imagePullSecret)
+        containers: 'manoelvsneto/backstage:$(Build.BuildId)'
