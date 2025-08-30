@@ -1,0 +1,22 @@
+site_name: 'TechDocs Example'
+site_description: 'Exemplo de documentação usando TechDocs'
+
+nav:
+  - Início: index.md
+  - Guia do Usuário: user-guide.md
+  - Arquitetura: architecture.md
+
+plugins:
+  - techdocs-core
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed
+  - pymdownx.emoji
+  - pymdownx.tasklist
+  - pymdownx.mark
+  - toc:
+      permalink: true

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backstage-config
+  namespace: backstage
+data:
+  APP_CONFIG_app_baseUrl: "https://backstage.example.com"
+  APP_CONFIG_backend_baseUrl: "https://backstage.example.com"
+  APP_CONFIG_backend_cors_origin: "https://backstage.example.com"
+  APP_CONFIG_auth_environment: "production"

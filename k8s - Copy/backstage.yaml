@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backstage
+  namespace: backstage
+  labels:
+    app: backstage
+spec:
+  ports:
+  - port: 80
+    targetPort: 7007
+    name: http
+  selector:
+    app: backstage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backstage
+  namespace: backstage
+  labels:
+    app: backstage
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backstage
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: backstage
+    spec:
+      containers:
+      - name: backstage
+        image: backstage:latest  # Substitua pela referência real da sua imagem
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 7007
+          name: http
+        envFrom:
+        - configMapRef:
+            name: backstage-config
+        - secretRef:
+            name: backstage-secrets
+        env:
+        - name: POSTGRES_HOST
+          value: backstage-postgresql
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 7007
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 7007
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      terminationGracePeriodSeconds: 30
